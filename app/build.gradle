@@ -1,0 +1,36 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 29
+    buildToolsVersion "29.0.2"
+
+    defaultConfig {
+        resConfigs "en"
+        applicationId "com.malin.v8"
+        minSdkVersion 23
+        targetSdkVersion 29
+        versionCode 1
+        versionName "1.0"
+        ndk {
+            abiFilters 'armeabi-v7a'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+dependencies {
+    //http://central.maven.org/maven2/com/eclipsesource/j2v8/j2v8/6.0.0/
+    //http://central.maven.org/maven2/com/eclipsesource/j2v8/j2v8/6.0.0/j2v8-6.0.0.aar
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'androidx.appcompat:appcompat:1.1.0'
+    implementation project(path: ':j2v8library')
+    //implementation 'com.eclipsesource.j2v8:j2v8:6.0.0@aar'
+    testImplementation 'junit:junit:4.12'
+    testImplementation 'org.mockito:mockito-core:3.2.0'
+}
