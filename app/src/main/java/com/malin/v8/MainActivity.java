@@ -22,6 +22,7 @@ import com.eclipsesource.v8.V8Object;
  * <p>
  * JsCallJavaViaInterface
  * https://www.jianshu.com/p/f472c43c16db
+ * https://www.heqiangfly.com/2017/08/10/open-source-j2v8-registerting-java-callback/
  * https://eclipsesource.com/blogs/2015/06/06/registering-java-callbacks-with-j2v8/
  * https://eclipsesource.com/blogs/2016/07/27/java-methods-as-jsfunctions/
  */
@@ -44,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
         exeJsFunctionBaseCall();
         JsCallJavaViaInterface();
         jsCallJavaViaReflection();
-        javaCallJsFunctionViaFunction();
+        jsCallJavaFunctionViaFunction();
     }
 
     /**
@@ -289,12 +290,20 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void javaCallJsFunctionViaFunction() {
+    /**
+     * 在 j2v8 V4 中，增加了新的方式，可以无需注册将 js 执行 java 函数。
+     * <p>
+     * 在之前的例子中，java 函数必须先注册到 js 才可以被调用。
+     * 试想这样一个需求：js 有一个函数，需要传入一个回调函数。
+     * 此时希望 java 来执行此函数，那么参数应该怎么传递呢？之前，是没有办法，但是现在有了。
+     */
+    private void jsCallJavaFunctionViaFunction() {
         V8 v8 = V8.createV8Runtime();
-//        V8Function callback = V8Function(v8,
-//                { receiver: V8Object, parameters: V8Array -> System.out.println(parameters.getInteger(0))
-//                }
-//                )
+        v8.executeVoidScript(""
+                + "function add(a, b, callback){\n"
+                + "    callback(a + b)\n"
+                + "}");
+
         V8Function callback = new V8Function(v8, new JavaCallback() {
             @Override
             public Object invoke(V8Object receiver, V8Array parameters) {
@@ -302,9 +311,8 @@ public class MainActivity extends AppCompatActivity {
                 return null;
             }
         });
-//        val arg = V8Array(v8).push(1).push(2).push(callback)
-//        v8.executeVoidFunction("add", arg)
-        V8Array arg = new V8Array(v8).push(1).push(2).push(callback);
+        V8Array parameters = new V8Array(v8).push(1).push(2).push(callback);
+        v8.executeVoidFunction("add", parameters);
     }
 
 
