@@ -9,12 +9,15 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.eclipsesource.v8.V8;
 import com.eclipsesource.v8.V8Array;
+import com.eclipsesource.v8.V8Function;
 import com.eclipsesource.v8.V8Object;
 
 /**
  * https://www.heqiangfly.com/2017/08/07/open-source-j2v8-getting-started/
  * https://eclipsesource.com/blogs/tutorials/getting-started-with-j2v8/
  * https://eclipsesource.com/blogs/2015/06/06/registering-java-callbacks-with-j2v8/
+ * <p>
+ * https://www.jianshu.com/p/f472c43c16db
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -31,6 +34,8 @@ public class MainActivity extends AppCompatActivity {
         getJsObject();
         array();
         exeJsFunction();
+        exeJsFunctionBase();
+        exeJsFunctionBaseCall();
     }
 
     /**
@@ -143,6 +148,48 @@ public class MainActivity extends AppCompatActivity {
         parameters.release();
         player1.release();
         hockeyTeam.release();
+        runtime.release();
+    }
+
+
+    private void exeJsFunctionBase() {
+        V8 runtime = V8.createV8Runtime();
+        runtime.executeVoidScript(""
+                + "function add(a, b){\n"
+                + "    return a + b\n"
+                + "}");
+        V8Array v8Array = new V8Array(runtime).push(10).push(20);
+        int result = runtime.executeIntegerFunction("add", v8Array);
+        Log.e(TAG, "result:" + result);
+        v8Array.release();
+        runtime.release();
+    }
+
+    /**
+     * 在JS中万物皆对象，函数也不例外。在 j2v8 中，一切 js 对象都用 V8Object 表示，
+     * 我们可以直接将其强制转换为 V8Function。
+     * <p>
+     * V8Function 表示的就是一个 js 函数对象，它拥有 call() 方法可以直接被调用。
+     */
+    private void exeJsFunctionBaseCall() {
+        V8 runtime = V8.createV8Runtime();
+        runtime.executeVoidScript(""
+                + "function add(a, b){\n"
+                + "    return a + b\n"
+                + "}");
+
+        // 先判断 add 是不是一个函数
+        if (runtime.getType("add") == V8.V8_FUNCTION) {
+            V8Array args = new V8Array(runtime).push(100).push(200);
+            Object addObject = runtime.getObject("add");
+            if (addObject instanceof V8Function) {
+                V8Function addFunction = (V8Function) addObject;
+                int addResult = (int) addFunction.call(null, args);
+                Log.e(TAG, "addResult:" + addResult);
+                args.close();
+                addFunction.close();
+            }
+        }
         runtime.release();
     }
 
