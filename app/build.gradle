@@ -7,7 +7,7 @@ android {
     defaultConfig {
         resConfigs "en"
         applicationId "com.malin.v8"
-        minSdkVersion 23
+        minSdkVersion 29
         targetSdkVersion 29
         versionCode 1
         versionName "1.0"
@@ -16,7 +16,7 @@ android {
         }
     }
 
-    buildTypes {
+    buildTypes {b
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
