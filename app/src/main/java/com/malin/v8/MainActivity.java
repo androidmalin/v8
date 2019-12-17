@@ -7,17 +7,23 @@ import android.view.View;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.eclipsesource.v8.JavaCallback;
+import com.eclipsesource.v8.JavaVoidCallback;
+import com.eclipsesource.v8.Releasable;
 import com.eclipsesource.v8.V8;
 import com.eclipsesource.v8.V8Array;
 import com.eclipsesource.v8.V8Function;
 import com.eclipsesource.v8.V8Object;
 
 /**
+ * base:
  * https://www.heqiangfly.com/2017/08/07/open-source-j2v8-getting-started/
  * https://eclipsesource.com/blogs/tutorials/getting-started-with-j2v8/
- * https://eclipsesource.com/blogs/2015/06/06/registering-java-callbacks-with-j2v8/
  * <p>
+ * JsCallJavaViaInterface
  * https://www.jianshu.com/p/f472c43c16db
+ * https://eclipsesource.com/blogs/2015/06/06/registering-java-callbacks-with-j2v8/
+ * https://eclipsesource.com/blogs/2016/07/27/java-methods-as-jsfunctions/
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -36,6 +42,9 @@ public class MainActivity extends AppCompatActivity {
         exeJsFunction();
         exeJsFunctionBase();
         exeJsFunctionBaseCall();
+        JsCallJavaViaInterface();
+        jsCallJavaViaReflection();
+        javaCallJsFunctionViaFunction();
     }
 
     /**
@@ -81,13 +90,13 @@ public class MainActivity extends AppCompatActivity {
 
         V8Object person = runtime.getObject("person");
         V8Object hockeyTeam = person.getObject("hockeyTeam");
-        Log.e(TAG, " JS result name = " + hockeyTeam.getString("name"));
+        Log.e(TAG, "JS result name = " + hockeyTeam.getString("name"));
 
         // 因为 V8Object 是底层 Javascript 对象的引用，那么我们也可以对这个对象进行操作，
         // 比如现在为Javascript增加新的属性，比如 hockeyTeam.add("captain", person);
         // 在进行了这一步操作之后，新添加的属性 captain 可以在Javascript中立刻被访问到。以下代码可以验证这一点：
         hockeyTeam.add("captain", person);
-        Log.e(TAG, " JS result  " + runtime.executeBooleanScript("person === hockeyTeam.captain"));
+        Log.e(TAG, "JS result  " + runtime.executeBooleanScript("person === hockeyTeam.captain"));
 
 
         // 最后，当我们不再需要它们时，必须释放我们访问的V8Object。
@@ -152,6 +161,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    /**
+     * Java call js function
+     */
     private void exeJsFunctionBase() {
         V8 runtime = V8.createV8Runtime();
         runtime.executeVoidScript(""
@@ -166,6 +178,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
+     * Java call js function
+     * <p>
      * 在JS中万物皆对象，函数也不例外。在 j2v8 中，一切 js 对象都用 V8Object 表示，
      * 我们可以直接将其强制转换为 V8Function。
      * <p>
@@ -192,5 +206,106 @@ public class MainActivity extends AppCompatActivity {
         }
         runtime.release();
     }
+
+    /**
+     * Js 调用 Java function（注册 Java 回调）
+     * 1.接口方式
+     * <p>
+     * java 函数必须先注册到 js 才可以被调用
+     */
+    private void JsCallJavaViaInterface() {
+        V8 runtime = V8.createV8Runtime();
+
+        // 要注册函数到 js，首先要创建一个类，并实现 JavaCallback 接口（如果 java 函数没有返回值，则实现 JavaVoidCallback 接口即可）。
+        // 这两个接口均有一个 invoke(V8Object receiver, V8Array parameters) 函数，
+        // 当被 js 调用时就会触发，这样就可执行 java 代码了
+        JavaVoidCallback javaVoidCallback = new JavaVoidCallback() {
+            // receiver 是此函数被调用时所基于的对象
+            // parameters 是传入的参数列表，表现为一个 V8数组，可以从中提取 js 传入的各个参数。
+            // 在这个例子中，print 不再基于 Global，而是基于 array[i] 被调用的，
+            // 因此 array[i] 将被传入 java 作为 receiver. 最终 java 将依次输出 AA says Hi., BB says Hi., CC says Hi..
+            @Override
+            public void invoke(V8Object receiver, V8Array parameters) {
+                Log.e(TAG, receiver.getString("first") + parameters.get(0) + " " + parameters.get(1));
+                if (parameters.length() > 0) {
+                    // 必须释放从参数列表中检索到的所有V8Object，因为它们是由于方法调用而返回给您的。
+                    Object arg1 = parameters.get(0);
+                    if (arg1 instanceof Releasable) {
+                        ((Releasable) arg1).release();
+                    }
+                }
+            }
+        };
+
+        // 注册到 js 全局函数，函数名为 `print`
+        runtime.registerJavaMethod(javaVoidCallback, "print");
+
+        // 先注册,后使用
+        runtime.executeVoidScript("" +
+                "var array = [{first:'AA'}, {first:'BB'}, {first:'CC'}];\n" +
+                "for ( var i = 0; i < array.length; i++ ) {\n" +
+                "  print.call(array[i], \" says Hi.\",\"Second\");" +
+                "}");
+        runtime.release();
+    }
+
+
+    /**
+     * Js 调用 Java function
+     * 2.反射
+     * <p>
+     * java 函数必须先注册到 js 才可以被调用
+     * <p>
+     * 在本例中，通过反射注册了现有 java 对象的方法。必须指定Java对象、方法的名称和参数列表。
+     * 并且此处不是直接注册为全局函数，而是先创建了一个名为 console 的 js 对象，把函数注册到了此对象上，
+     * <p>
+     * 不难发现，通过接口方式注册，参数可以是动态的
+     * 而通过反射注册，参数必须明确指定并且与 java 参数严格匹配，若参数不匹配则会异常。
+     */
+    public void jsCallJavaViaReflection() {
+        V8 runtime = V8.createV8Runtime();
+        Console console = new Console();
+        V8Object v8Console = new V8Object(runtime);
+        runtime.add("console", v8Console);
+
+        v8Console.registerJavaMethod(console, "log", "jlog", new Class<?>[]{String.class});
+        v8Console.registerJavaMethod(console, "error", "jerr", new Class<?>[]{String.class});
+        v8Console.release();
+
+        // 然后可以直接在 js 中调用 `console.jlog('hello, world')` 与 `console.jerr('hello, world')` 了。
+        runtime.executeScript("console.jlog('hello, world');");
+        runtime.executeScript("console.jerr('hello, world');");
+        runtime.release();
+    }
+
+    @SuppressWarnings("unused")
+    private static class Console {
+        public void log(final String message) {
+            Log.e(TAG, "[INFO] " + message);
+        }
+
+        public void error(final String message) {
+            Log.e(TAG, "[ERROR] " + message);
+        }
+    }
+
+    private void javaCallJsFunctionViaFunction() {
+        V8 v8 = V8.createV8Runtime();
+//        V8Function callback = V8Function(v8,
+//                { receiver: V8Object, parameters: V8Array -> System.out.println(parameters.getInteger(0))
+//                }
+//                )
+        V8Function callback = new V8Function(v8, new JavaCallback() {
+            @Override
+            public Object invoke(V8Object receiver, V8Array parameters) {
+                System.out.println(parameters.getInteger(0));
+                return null;
+            }
+        });
+//        val arg = V8Array(v8).push(1).push(2).push(callback)
+//        v8.executeVoidFunction("add", arg)
+        V8Array arg = new V8Array(v8).push(1).push(2).push(callback);
+    }
+
 
 }
